@@ -1,16 +1,22 @@
 import axios from "axios";
 import dotenv from "dotenv";
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
 
 const NOTION_API_KEY = process.env.NOTION_API_KEY;
-const NEW_IMAGE_URL = process.env.NEW_IMAGE_URL; // Change accordingly
+const IMG_BASE_FILE_PATH = "export for notion/_resources/";
 
 const HEADERS = {
     Authorization: `Bearer ${NOTION_API_KEY}`,
     "Notion-Version": "2022-06-28",
     "Content-Type": "application/json",
 };
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Step 1: Get all pages in the workspace
 const getAllPages = async () => {
@@ -46,7 +52,20 @@ const getBlocks = async (pageId) => {
 };
 
 // Step 3: Replace broken image
-const replaceImage = async (blockId, newUrl) => {
+const replaceImage = async (blockId, oldUrl, dryRun) => {
+    // ex: Audio Troubleshoot
+    // ../_resources/f945230e26284a0aa0dbc64d78b6f4de.png (API response)
+    // to
+    // ../_resources/f945230e26284a0aa0dbc64d78b6f4de.png (HTML relative path)
+    // _resources/f945230e26284a0aa0dbc64d78b6f4de.png (script relative path)
+
+    const scriptRelativePath = oldUrl.replace(/^.*_resources\//, '');
+    const absolutePath = path.resolve(IMG_BASE_FILE_PATH, scriptRelativePath);
+    console.debug("Absolute path:", absolutePath);
+    const imageData = fs.readFileSync(absolutePath);
+
+    const newUrl = `data:image/png;base64,${imageData.toString('base64')}`;
+
     try {
         const url = `https://api.notion.com/v1/blocks/${blockId}`;
         const data = {
@@ -55,7 +74,14 @@ const replaceImage = async (blockId, newUrl) => {
                 external: { url: newUrl },
             },
         };
-        await axios.patch(url, data, { headers: HEADERS });
+
+        if (!dryRun) {
+            await axios.patch(url, data, { headers: HEADERS });
+        } else {
+            console.debug("Dry run: Would have updated image:", oldUrl, newUrl);
+        }
+
+
         console.log(`Updated image block: ${blockId}`);
     } catch (error) {
         console.error("Error updating image:", error.response?.data || error);
@@ -64,6 +90,7 @@ const replaceImage = async (blockId, newUrl) => {
 
 // Main function to scan and fix images
 const main = async (dryRun = false) => {
+    let brokenImages = {};
     const pages = await getAllPages();
 
     for (const page of pages) {
@@ -76,15 +103,17 @@ const main = async (dryRun = false) => {
             if (block.type === "image" && block.image.type === "file") {
                 // console.debug(`Found broken image in page ${page.url}, block ${block.id}, url: ${block.image.file.url}`);
                 imageCount++;
-                // if (!dryRun) {
-                //     await replaceImage(block.id, NEW_IMAGE_URL);
-                // }
             } else if (block.type === "image" && block.image.type === "external") {
+
                 // console.debug(`Found broken image in page ${page.url}, block ${block.id}, url: ${block.image.file.url}`);
-                brokenImageCount++;
-                if (!dryRun) {
-                    await replaceImage(block.id, NEW_IMAGE_URL);
+                if (!brokenImages[block.id]) {
+                    brokenImages[block.id] = [block.image.external.url];
+                } else {
+                    brokenImages[block.id].push(block.image.external.url);
                 }
+
+                brokenImageCount++;
+                await replaceImage(block.id, block.image.external.url, dryRun);
             } else {
                 // console.debug(`Skipping block ${block.id}, type: ${block.type}`);
             }

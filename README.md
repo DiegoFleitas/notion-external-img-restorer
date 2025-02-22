@@ -14,3 +14,5 @@ If you want to grant access only to specific pages, follow these steps:
     Click "..." (top right).
     Under "Connection", search for your integration.
     Add to page
+
+The folder "export for notion" contains the original HTML that was imported with into Notion with the correct images
