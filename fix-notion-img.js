@@ -31,7 +31,7 @@ const getAllPages = async () => {
 
         return response.data.results;
     } catch (error) {
-        console.error("Error fetching pages:", error.response?.data || error);
+        console.error("Error fetching pages:", error?.response?.data || error);
         return [];
     }
 };
@@ -46,12 +46,13 @@ const getBlocks = async (pageId) => {
 
         return response.data.results;
     } catch (error) {
-        console.error("Error fetching blocks:", error.response?.data || error);
+        console.error("Error fetching blocks:", error?.response?.data || error);
         return [];
     }
 };
 
 // Step 3: Replace broken image
+// FIXME: puppeteer like approach?
 const replaceImage = async (blockId, oldUrl, dryRun) => {
     // ex: Audio Troubleshoot
     // ../_resources/f945230e26284a0aa0dbc64d78b6f4de.png (API response)
@@ -61,7 +62,7 @@ const replaceImage = async (blockId, oldUrl, dryRun) => {
 
     const scriptRelativePath = oldUrl.replace(/^.*_resources\//, '');
     const absolutePath = path.resolve(IMG_BASE_FILE_PATH, scriptRelativePath);
-    console.debug("Absolute path:", absolutePath);
+    // console.debug("Absolute path:", absolutePath);
     const imageData = fs.readFileSync(absolutePath);
 
     const newUrl = `data:image/png;base64,${imageData.toString('base64')}`;
@@ -76,15 +77,22 @@ const replaceImage = async (blockId, oldUrl, dryRun) => {
         };
 
         if (!dryRun) {
+            // FIXME: Error updating image: {
+            // object: 'error',
+            // status: 400,
+            // code: 'validation_error',
+            // message: 'body failed validation: body.image.external.url.length should be ≤ `2000`, instead was `220538`.',
+            // request_id: '91371158-19ff-4acc-a79a-5042ce0df52e'
+            // }
             await axios.patch(url, data, { headers: HEADERS });
         } else {
-            console.debug("Dry run: Would have updated image:", oldUrl, newUrl);
+            // console.debug("[Dry run] would have updated image:", oldUrl, newUrl);
+            console.debug("[Dry run] would have fixed:", oldUrl);
         }
 
-
-        console.log(`Updated image block: ${blockId}`);
+        // console.log(`Updated image block: ${blockId}`);
     } catch (error) {
-        console.error("Error updating image:", error.response?.data || error);
+        console.error("Error updating image:", error?.response?.data || error);
     }
 };
 
@@ -114,22 +122,26 @@ const main = async (dryRun = false) => {
 
                 brokenImageCount++;
                 await replaceImage(block.id, block.image.external.url, dryRun);
+
+                // TODO: remove this (added to just test one image)
+                return;
             } else {
                 // console.debug(`Skipping block ${block.id}, type: ${block.type}`);
             }
         }
 
         if (imageCount > 0) {
-            console.log(`Page ${page.url} has ${imageCount} images.`);
+            // console.log(`Page ${page.url} has ${imageCount} images.`);
         }
 
         if (brokenImageCount > 0) {
-            console.log(`Page ${page.url} has ${brokenImageCount} BROKEN images.`);
+            // console.log(`Page ${page.url} has ${brokenImageCount} BROKEN images.`);
         }
     }
 
-    console.log("Image replacement process completed!", pages.length);
+    // console.log("Image replacement process completed!", pages.length);
 };
 
 // Execute main function
-main(true); // Pass true for dry run, false for actual replacement
+// main(true); // Pass true for dry run, false for actual replacement
+main(false); // Pass true for dry run, false for actual replacement
